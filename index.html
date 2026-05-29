@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#08110d" />
+  <title>韩股快看 | Naver 实时行情中文站</title>
+  <style>
+    :root {
+      --bg: #08110d;
+      --bg-soft: #102119;
+      --paper: #f5f0df;
+      --muted: rgba(245, 240, 223, .66);
+      --line: rgba(245, 240, 223, .15);
+      --card: rgba(245, 240, 223, .08);
+      --card-strong: rgba(245, 240, 223, .14);
+      --green: #41f2a1;
+      --lime: #ddff54;
+      --red: #ff6152;
+      --amber: #ffd36a;
+      --blue: #7aa7ff;
+      --shadow: 0 22px 80px rgba(0, 0, 0, .42);
+      color-scheme: dark;
+      font-family: ui-rounded, "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--paper);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(65, 242, 161, .22), transparent 26rem),
+        radial-gradient(circle at 100% 6%, rgba(221, 255, 84, .16), transparent 28rem),
+        linear-gradient(150deg, #08110d 0%, #0b1712 48%, #12261b 100%);
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(245,240,223,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(245,240,223,.035) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, black, transparent 78%);
+    }
+
+    .shell { width: min(1120px, 100%); margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 12px max(28px, env(safe-area-inset-bottom)); }
+    header { display: grid; gap: 14px; padding: 12px 2px 16px; animation: rise .52s ease-out both; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; background: rgba(8, 17, 13, .62); color: var(--muted); font-size: 12px; backdrop-filter: blur(16px); }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(65, 242, 161, .8); animation: pulse 1.8s infinite; }
+    h1 { margin: 0; max-width: 860px; font-size: clamp(34px, 10vw, 76px); line-height: .92; letter-spacing: -.075em; }
+    .lead { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.7; font-size: 15px; }
+
+    .local-warning, .runtime-message { display: none; margin: 0 0 12px; padding: 12px 14px; border: 1px solid rgba(255, 211, 106, .38); border-radius: 20px; color: var(--amber); background: rgba(255, 211, 106, .10); font-size: 13px; line-height: 1.6; }
+    body.is-file .local-warning { display: block; }
+    code { padding: 2px 6px; border-radius: 8px; color: var(--amber); background: rgba(0,0,0,.28); }
+
+    .toolbar { position: sticky; top: 8px; z-index: 10; display: grid; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 26px; background: rgba(8,17,13,.80); box-shadow: var(--shadow); backdrop-filter: blur(22px); animation: rise .62s ease-out .06s both; }
+    .search-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    input, select, button { min-height: 46px; border: 1px solid var(--line); border-radius: 18px; color: var(--paper); background: rgba(245,240,223,.08); font: inherit; outline: none; }
+    input { width: 100%; padding: 0 14px; }
+    select { padding: 0 12px; }
+    button { padding: 0 14px; cursor: pointer; transition: transform .16s ease, background .16s ease, border-color .16s ease; }
+    button:active { transform: translateY(1px) scale(.985); }
+    .primary, .range-tab.active { border-color: transparent; color: #102016; background: linear-gradient(135deg, var(--lime), var(--green)); font-weight: 900; }
+    .quick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+    .quick::-webkit-scrollbar { display: none; }
+    .chip { flex: 0 0 auto; min-height: 36px; border-radius: 999px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+    .market-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; }
+    .index-card, .card, .panel { border: 1px solid var(--line); background: linear-gradient(180deg, var(--card-strong), var(--card)); box-shadow: var(--shadow); }
+    .index-card { min-height: 94px; padding: 13px; border-radius: 24px; animation: rise .58s ease-out both; }
+    .index-card span { color: var(--muted); font-size: 12px; }
+    .index-card strong { display: block; margin-top: 8px; font-size: 26px; letter-spacing: -.04em; }
+    .change-pill { display: inline-flex; margin-top: 8px; padding: 5px 8px; border-radius: 999px; background: rgba(245,240,223,.08); font-weight: 900; font-size: 13px; }
+    .up .change-pill, .up .change-line { color: var(--green); }
+    .down .change-pill, .down .change-line { color: var(--red); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 12px; margin-top: 14px; }
+    .card { min-height: 214px; overflow: hidden; border-radius: 28px; cursor: pointer; animation: rise .52s ease-out both; }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 14px 14px 6px; }
+    .symbol-title { display: grid; gap: 4px; min-width: 0; }
+    .symbol-title strong { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+    .symbol-title span, .meta-line { color: var(--muted); font-size: 12px; }
+    .icon-btn { min-width: 38px; width: 38px; min-height: 38px; height: 38px; padding: 0; border-radius: 14px; color: var(--muted); }
+    .quote-body { display: grid; gap: 8px; padding: 4px 14px 14px; }
+    .price-line { font-size: clamp(30px, 7vw, 44px); line-height: 1; letter-spacing: -.055em; font-weight: 950; }
+    .change-line { width: fit-content; padding: 6px 10px; border-radius: 999px; background: rgba(245,240,223,.08); font-size: 14px; font-weight: 900; }
+    .mini-chart { width: 100%; height: 62px; object-fit: cover; border-radius: 18px; background: rgba(0,0,0,.18); filter: saturate(1.1); }
+    .meta-line { display: flex; justify-content: space-between; gap: 12px; }
+
+    .panel { margin-top: 16px; border-radius: 30px; overflow: hidden; animation: rise .68s ease-out .12s both; }
+    .panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 18px; }
+    .panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .detail-card { display: grid; gap: 14px; min-height: 500px; padding: 16px; }
+    .detail-top { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
+    .detail-label { color: var(--muted); font-size: 13px; letter-spacing: .04em; }
+    .detail-card h3 { margin: 6px 0 10px; font-size: clamp(24px, 6vw, 42px); letter-spacing: -.05em; }
+    .detail-price { font-size: clamp(42px, 11vw, 86px); line-height: .92; letter-spacing: -.07em; font-weight: 950; }
+    .detail-card p { margin: 8px 0 0; color: var(--muted); line-height: 1.55; font-size: 13px; }
+    .range-tabs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .range-tab { min-height: 36px; border-radius: 999px; color: var(--muted); font-size: 13px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .stat { padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: rgba(245,240,223,.06); }
+    .stat span { display: block; color: var(--muted); font-size: 11px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 14px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 12px; }
+    .legend i { display: inline-block; width: 18px; height: 3px; margin-right: 6px; border-radius: 99px; vertical-align: middle; }
+    .big-chart { width: 100%; height: 320px; border-radius: 24px; background: rgba(0,0,0,.20); }
+    .naver-image { display: none; width: 100%; max-height: 340px; object-fit: contain; border-radius: 24px; background: rgba(0,0,0,.20); }
+
+    .leaders { display: grid; gap: 8px; padding: 12px; }
+    .leader-row { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; min-height: 58px; padding: 10px; border: 1px solid var(--line); border-radius: 18px; background: rgba(245,240,223,.055); }
+    .rank { color: var(--muted); font-weight: 900; text-align: center; }
+    .leader-name { display: grid; gap: 3px; min-width: 0; }
+    .leader-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .leader-name span, .leader-meta { color: var(--muted); font-size: 12px; }
+    .leader-price { text-align: right; font-weight: 900; }
+    .empty { padding: 28px; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: 24px; }
+    .notice { margin: 14px 2px 0; padding: 13px 14px; border: 1px solid rgba(221,255,84,.24); border-radius: 22px; color: var(--muted); background: rgba(221,255,84,.08); font-size: 13px; line-height: 1.65; }
+    body.is-loading .pulse { animation-duration: .7s; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 12px rgba(65,242,161,0); } 100% { box-shadow: 0 0 0 0 rgba(65,242,161,0); } }
+
+    @media (max-width: 560px) {
+      .shell { padding-left: 10px; padding-right: 10px; }
+      .toolbar { border-radius: 22px; }
+      .market-strip, .grid { grid-template-columns: 1fr; }
+      .card { border-radius: 24px; }
+      .detail-top { grid-template-columns: 1fr; }
+      .range-tabs { justify-content: flex-start; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .big-chart { height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow"><span class="pulse"></span> Naver 韩国行情 · 中文手机站</div>
+      <h1>韩股快看，少一层语言障碍。</h1>
+      <p class="lead">数据来自 Naver Stock 手机站接口，默认关注三星电子、SK海力士、KOSPI、KOSDAQ。输入韩国股票 6 位代码即可添加，例如 <b>005930</b>、<b>000660</b>、<b>402340</b>。</p>
+    </header>
+
+    <div class="local-warning">当前是直接打开本地文件 <code>file://</code>，无法调用行情代理。请在本目录运行 <code>node server.js</code>，再访问 <code>http://127.0.0.1:4173</code>；部署到 Netlify 后会自动使用 Netlify Functions。</div>
+
+    <section class="toolbar" aria-label="添加股票">
+      <div class="search-row">
+        <input id="symbolInput" autocomplete="off" placeholder="输入韩股代码：005930 / 000660 / KOSPI" />
+        <button class="primary" id="addBtn">添加</button>
+      </div>
+      <div class="quick" id="quickList"></div>
+    </section>
+
+    <section class="market-strip" id="marketStrip" aria-live="polite"></section>
+    <section class="grid" id="watchlist" aria-live="polite"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>个股详情</h2>
+          <p>点任一卡片进入详情；价格用 Naver 快速接口，K 线为最近交易日数据。</p>
+        </div>
+        <select id="chartSymbol" aria-label="选择主图股票"></select>
+      </div>
+      <div id="advancedChart"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>韩国市值榜</h2>
+          <p>来自 Naver 市值页面，点击可加入自选。</p>
+        </div>
+        <select id="leaderCategory" aria-label="选择市场">
+          <option value="all">全部</option>
+          <option value="KOSPI">KOSPI</option>
+          <option value="KOSDAQ">KOSDAQ</option>
+        </select>
+      </div>
+      <div class="leaders" id="leaders"></div>
+    </section>
+
+    <p class="notice">说明：本项目是中文展示层和代理层，不保存交易账号，也不提供交易功能。Naver 接口字段可能变化；若韩国交易所或 Naver 调整授权/接口，需同步更新代理函数。</p>
+  </main>
+
+  <script>
+    if (location.protocol === 'file:') document.body.classList.add('is-file');
+
+    const STORAGE_KEY = 'korea-stock-cn-watchlist-v1';
+    const DEFAULT_SYMBOLS = [
+      { symbol: 'KRX:005930', name: '三星电子' },
+      { symbol: 'KRX:000660', name: 'SK海力士' },
+      { symbol: 'KRX:KOSPI', name: 'KOSPI 韩国综合指数' },
+      { symbol: 'KRX:KOSDAQ', name: 'KOSDAQ 韩国创业板' }
+    ];
+    const QUICK_SYMBOLS = [
+      ...DEFAULT_SYMBOLS,
+      { symbol: 'KRX:402340', name: 'SK Square' },
+      { symbol: 'KRX:005380', name: '现代汽车' },
+      { symbol: 'KRX:000270', name: '起亚' },
+      { symbol: 'KRX:035420', name: 'NAVER' },
+      { symbol: 'KRX:035720', name: 'Kakao' }
+    ];
+    const RANGES = [
+      { key: 'day', label: '日线', chart: 'day' },
+      { key: 'month3', label: '3个月', chart: 'month3' },
+      { key: 'year', label: '1年', chart: 'year' }
+    ];
+
+    const watchlistEl = document.querySelector('#watchlist');
+    const marketStripEl = document.querySelector('#marketStrip');
+    const inputEl = document.querySelector('#symbolInput');
+    const chartSelectEl = document.querySelector('#chartSymbol');
+    const chartEl = document.querySelector('#advancedChart');
+    const quickListEl = document.querySelector('#quickList');
+    const leadersEl = document.querySelector('#leaders');
+    const leaderCategoryEl = document.querySelector('#leaderCategory');
+
+    let watchlist = loadWatchlist();
+    let quoteMap = new Map();
+    let detailQuote = null;
+    let activeChartSymbol = watchlist[0]?.symbol || DEFAULT_SYMBOLS[0].symbol;
+    let activeRange = 'day';
+    let lastRefresh = null;
+
+    function loadWatchlist() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+        if (Array.isArray(saved) && saved.length) return saved;
+      } catch (error) {}
+      return DEFAULT_SYMBOLS;
+    }
+    function saveWatchlist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist)); }
+
+    function normalizeSymbol(raw) {
+      const value = String(raw || '').trim().toUpperCase();
+      if (!value) return '';
+      if (value === '^KS11' || value === 'KOSPI') return 'KRX:KOSPI';
+      if (value === 'KOSDAQ') return 'KRX:KOSDAQ';
+      if (value.startsWith('KRX:')) return value;
+      if (/^\d{6}$/.test(value)) return `KRX:${value}`;
+      return value;
+    }
+    function codeOf(symbol) { return normalizeSymbol(symbol).replace(/^KRX:/, ''); }
+    function prettyName(symbol) { return QUICK_SYMBOLS.find(item => item.symbol === symbol)?.name || symbol; }
+    function isPositive(quote) { return Number(quote?.change) >= 0; }
+    function signed(value, digits = 2) {
+      if (!Number.isFinite(value)) return '--';
+      return `${value > 0 ? '+' : ''}${formatNumber(value, '', digits)}`;
+    }
+    function formatNumber(value, currency = '', maxDigits) {
+      if (!Number.isFinite(value)) return '--';
+      const maximumFractionDigits = maxDigits ?? (Math.abs(value) >= 1000 ? 0 : Math.abs(value) >= 100 ? 2 : 3);
+      const text = new Intl.NumberFormat('zh-CN', { maximumFractionDigits }).format(value);
+      return currency ? `${currency} ${text}` : text;
+    }
+    function formatCompact(value) {
+      if (!Number.isFinite(value)) return '--';
+      return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 2 }).format(value);
+    }
+    function formatTime(value) {
+      if (!value) return '--';
+      const date = typeof value === 'number' ? new Date(value) : new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+    }
+
+    async function fetchQuotes(symbols, history = false) {
+      const encoded = symbols.map(item => encodeURIComponent(item)).join(',');
+      const endpoints = [`/api/quotes?symbols=${encoded}&history=${history ? 1 : 0}`, `/.netlify/functions/quotes?symbols=${encoded}&history=${history ? 1 : 0}`];
+      let lastError = null;
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return await response.json();
+        } catch (error) { lastError = error; }
+      }
+      throw lastError || new Error('请求失败');
+    }
+    async function fetchLeaders(category = 'all') {
+      const endpoints = [`/api/leaders?category=${category}&pageSize=40`, `/.netlify/functions/leaders?category=${category}&pageSize=40`];
+      let lastError = null;
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return await response.json();
+        } catch (error) { lastError = error; }
+      }
+      throw lastError || new Error('请求失败');
+    }
+
+    function addSymbol(raw, name) {
+      const symbol = normalizeSymbol(raw);
+      if (!symbol) return;
+      if (watchlist.some(item => item.symbol === symbol)) return setActiveChart(symbol);
+      watchlist = [{ symbol, name: name || prettyName(symbol) }, ...watchlist];
+      saveWatchlist();
+      render();
+      refreshQuotes();
+      setActiveChart(symbol, false);
+    }
+    function removeSymbol(symbol) {
+      watchlist = watchlist.filter(item => item.symbol !== symbol);
+      quoteMap.delete(symbol);
+      saveWatchlist();
+      if (activeChartSymbol === symbol) activeChartSymbol = watchlist[0]?.symbol || DEFAULT_SYMBOLS[0].symbol;
+      detailQuote = null;
+      render();
+      refreshDetail();
+    }
+
+    async function refreshQuotes() {
+      if (!watchlist.length) return;
+      document.body.classList.add('is-loading');
+      try {
+        const data = await fetchQuotes(watchlist.map(item => item.symbol), false);
+        (data.quotes || []).forEach(quote => quoteMap.set(quote.symbol, quote));
+        lastRefresh = new Date();
+        renderMarketStrip();
+        renderCards();
+        renderDetail();
+        showError(data.errors?.length ? `部分代码未取到：${data.errors.map(e => e.symbol || e.group).join('、')}` : '');
+      } catch (error) {
+        showError(`行情接口不可用：${error?.message || '请求失败'}。本地请运行 node server.js。`);
+      } finally {
+        document.body.classList.remove('is-loading');
+      }
+    }
+    async function refreshDetail() {
+      if (!activeChartSymbol) return;
+      chartEl.classList.add('loading');
+      try {
+        const data = await fetchQuotes([activeChartSymbol], true);
+        detailQuote = data.quotes?.[0] || quoteMap.get(activeChartSymbol) || null;
+        if (detailQuote) quoteMap.set(detailQuote.symbol, detailQuote);
+        renderCards();
+        renderDetail();
+        showError(data.errors?.length ? `详情未取到：${data.errors[0].symbol}` : '');
+      } catch (error) {
+        showError(`详情行情不可用：${error?.message || '请求失败'}`);
+      }
+    }
+    async function refreshLeaders() {
+      leadersEl.innerHTML = '<div class="empty">正在加载韩国市值榜...</div>';
+      try {
+        const data = await fetchLeaders(leaderCategoryEl.value);
+        renderLeaders(data.stocks || []);
+      } catch (error) {
+        leadersEl.innerHTML = `<div class="empty">市值榜加载失败：${error?.message || '请求失败'}</div>`;
+      }
+    }
+
+    function showError(message) {
+      let el = document.querySelector('#runtimeMessage');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'runtimeMessage';
+        el.className = 'runtime-message';
+        document.querySelector('.toolbar').after(el);
+      }
+      el.textContent = message;
+      el.style.display = message ? 'block' : 'none';
+    }
+
+    function canvasSetup(canvas) {
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      return { ctx, width: rect.width, height: rect.height };
+    }
+    function drawLine(ctx, points, getter, xFor, yFor, color, width = 2.5) {
+      ctx.beginPath(); ctx.lineWidth = width; ctx.strokeStyle = color;
+      let started = false;
+      points.forEach((point, index) => {
+        const value = getter(point);
+        if (!Number.isFinite(value)) return;
+        const x = xFor(index); const y = yFor(value);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    function drawDetailChart(canvas, quote) {
+      const { ctx, width, height } = canvasSetup(canvas);
+      const points = (quote?.points || []).filter(point => Number.isFinite(point.close));
+      if (points.length < 2) return;
+      const pad = { top: 18, right: 56, bottom: 34, left: 10 };
+      const volumeHeight = Math.max(40, height * .2);
+      const chartBottom = height - pad.bottom - volumeHeight - 10;
+      const values = points.flatMap(point => [point.high, point.low, point.close, point.ma5, point.ma20]).filter(Number.isFinite);
+      const min = Math.min(...values); const max = Math.max(...values); const span = max - min || 1;
+      const innerWidth = width - pad.left - pad.right;
+      const xFor = index => pad.left + index * (innerWidth / (points.length - 1));
+      const yFor = value => pad.top + (max - value) / span * (chartBottom - pad.top);
+
+      ctx.font = '12px ui-rounded, sans-serif';
+      ctx.fillStyle = 'rgba(245,240,223,.58)';
+      ctx.strokeStyle = 'rgba(245,240,223,.1)';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (chartBottom - pad.top) * i / 4;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right + 8, y); ctx.stroke();
+        ctx.fillText(formatNumber(max - span * i / 4), width - pad.right + 12, y + 4);
+      }
+      drawLine(ctx, points, point => point.close, xFor, yFor, isPositive(quote) ? '#41f2a1' : '#ff6152', 3);
+      drawLine(ctx, points, point => point.ma5, xFor, yFor, '#ffd36a', 1.6);
+      drawLine(ctx, points, point => point.ma20, xFor, yFor, '#7aa7ff', 1.6);
+
+      const maxVolume = Math.max(...points.map(point => point.volume || 0), 1);
+      const barWidth = Math.max(1, innerWidth / points.length * .58);
+      points.forEach((point, index) => {
+        const barHeight = ((point.volume || 0) / maxVolume) * volumeHeight;
+        ctx.fillStyle = point.close >= (point.open || point.close) ? 'rgba(65,242,161,.42)' : 'rgba(255,97,82,.38)';
+        ctx.fillRect(xFor(index) - barWidth / 2, height - pad.bottom - barHeight, barWidth, barHeight);
+      });
+      ctx.fillStyle = 'rgba(245,240,223,.58)';
+      const labelCount = Math.min(4, points.length - 1);
+      for (let i = 0; i <= labelCount; i++) {
+        const index = Math.round((points.length - 1) * i / labelCount);
+        ctx.fillText(points[index].time.slice(5), Math.min(xFor(index), width - 78), height - 10);
+      }
+    }
+
+    function renderQuickList() {
+      quickListEl.innerHTML = '';
+      QUICK_SYMBOLS.forEach(item => {
+        const btn = document.createElement('button');
+        btn.className = 'chip'; btn.textContent = item.name; btn.title = item.symbol;
+        btn.addEventListener('click', () => addSymbol(item.symbol, item.name));
+        quickListEl.appendChild(btn);
+      });
+    }
+    function renderMarketStrip() {
+      const indexes = ['KRX:KOSPI', 'KRX:KOSDAQ'].map(symbol => quoteMap.get(symbol)).filter(Boolean);
+      marketStripEl.innerHTML = indexes.map((quote, index) => `
+        <article class="index-card ${isPositive(quote) ? 'up' : 'down'}" style="animation-delay:${index * 50}ms" data-index-card="${quote.symbol}">
+          <span>${quote.name}</span>
+          <strong>${formatNumber(quote.price)}</strong>
+          <div class="change-pill">${signed(quote.change)} / ${signed(quote.changePercent)}%</div>
+        </article>
+      `).join('');
+    }
+    function renderCards() {
+      watchlistEl.innerHTML = '';
+      if (!watchlist.length) { watchlistEl.innerHTML = '<div class="empty">还没有自选。输入韩国股票代码后点击“添加”。</div>'; return; }
+      watchlist.forEach((item, index) => {
+        const quote = quoteMap.get(item.symbol);
+        const positive = isPositive(quote);
+        const after = quote?.afterMarket?.price ? `盘后 ${formatNumber(quote.afterMarket.price)}` : '';
+        const card = document.createElement('article');
+        card.className = `card quote-card ${positive ? 'up' : 'down'}`;
+        card.dataset.symbol = item.symbol;
+        card.style.animationDelay = `${Math.min(index * 45, 260)}ms`;
+        card.innerHTML = `
+          <div class="card-head">
+            <div class="symbol-title">
+              <strong>${item.name || quote?.name || item.symbol}</strong>
+              <span>${item.symbol}${quote?.originalName ? ` · ${quote.originalName}` : ''}</span>
+            </div>
+            <div>
+              <button class="icon-btn" data-chart="${item.symbol}" title="查看详情">⌁</button>
+              <button class="icon-btn" data-remove="${item.symbol}" title="删除">×</button>
+            </div>
+          </div>
+          <div class="quote-body">
+            <div class="price-line">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
+            <div class="change-line">${quote ? `${signed(quote.change)} / ${signed(quote.changePercent)}%` : '--'}</div>
+            ${quote?.miniImageChartUrl ? `<img class="mini-chart" src="${quote.miniImageChartUrl}" alt="${quote.name} 迷你走势图" loading="lazy" />` : '<div class="mini-chart"></div>'}
+            <div class="meta-line"><span>${quote?.exchange || 'Naver Stock'}${after ? ` · ${after}` : ''}</span><span>${quote?.marketStatus || '--'}</span></div>
+          </div>`;
+        watchlistEl.appendChild(card);
+      });
+    }
+    function renderSelect() {
+      chartSelectEl.innerHTML = '';
+      watchlist.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.symbol; option.textContent = `${item.name || item.symbol} · ${item.symbol}`;
+        chartSelectEl.appendChild(option);
+      });
+      chartSelectEl.value = activeChartSymbol;
+    }
+    function renderDetail() {
+      const item = watchlist.find(x => x.symbol === activeChartSymbol) || watchlist[0];
+      const quote = detailQuote?.symbol === activeChartSymbol ? detailQuote : (item && quoteMap.get(item.symbol));
+      const points = quote?.points || [];
+      const highs = points.map(point => point.high ?? point.close).filter(Number.isFinite);
+      const lows = points.map(point => point.low ?? point.close).filter(Number.isFinite);
+      const latest = points.at(-1);
+      const range = RANGES.find(item => item.key === activeRange) || RANGES[0];
+      const imageUrl = quote?.chartImages?.line?.[range.chart] || '';
+      chartEl.innerHTML = `
+        <div class="detail-card ${isPositive(quote) ? 'up' : 'down'}">
+          <div class="detail-top">
+            <div>
+              <span class="detail-label">${item?.symbol || '--'} · ${range.label}</span>
+              <h3>${item?.name || quote?.name || '--'}</h3>
+              <div class="detail-price">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
+              <p>${quote ? `${quote.exchange || 'Naver Stock'} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ' · Naver 标记 0 延迟'}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}` : '等待行情'}</p>
+            </div>
+            <div class="range-tabs">${RANGES.map(item => `<button class="range-tab ${item.key === activeRange ? 'active' : ''}" data-range="${item.key}">${item.label}</button>`).join('')}</div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat"><span>区间最高</span><strong>${formatNumber(Math.max(...highs), quote?.currency || '')}</strong></div>
+            <div class="stat"><span>区间最低</span><strong>${formatNumber(Math.min(...lows), quote?.currency || '')}</strong></div>
+            <div class="stat"><span>成交量</span><strong>${formatCompact(quote?.volume ?? latest?.volume)}</strong></div>
+            <div class="stat"><span>市值</span><strong>${formatCompact(quote?.marketCap)}</strong></div>
+          </div>
+          <div class="legend"><span><i style="background:${isPositive(quote) ? '#41f2a1' : '#ff6152'}"></i>价格</span><span><i style="background:#ffd36a"></i>MA5</span><span><i style="background:#7aa7ff"></i>MA20</span><span><i style="background:rgba(245,240,223,.34)"></i>成交量</span></div>
+          <canvas class="big-chart"></canvas>
+          ${imageUrl ? `<img class="naver-image" src="${imageUrl}" alt="Naver ${range.label}走势图" />` : ''}
+        </div>`;
+      const canvas = chartEl.querySelector('canvas');
+      if (quote && points.length > 1) drawDetailChart(canvas, quote);
+      if (imageUrl && (!points.length || activeRange !== 'day')) {
+        canvas.style.display = 'none';
+        chartEl.querySelector('.naver-image').style.display = 'block';
+      }
+    }
+    function renderLeaders(stocks) {
+      if (!stocks.length) { leadersEl.innerHTML = '<div class="empty">暂无市值榜数据。</div>'; return; }
+      leadersEl.innerHTML = stocks.map((quote, index) => `
+        <div class="leader-row ${isPositive(quote) ? 'up' : 'down'}" data-add-leader="${quote.symbol}" data-name="${quote.name}">
+          <div class="rank">${index + 1}</div>
+          <div class="leader-name"><strong>${quote.name}</strong><span>${quote.symbol} · ${quote.originalName || quote.exchange}</span></div>
+          <div class="leader-price"><div>${formatNumber(quote.price)}</div><span class="leader-meta">${signed(quote.changePercent)}%</span></div>
+        </div>`).join('');
+    }
+    function render() { renderQuickList(); renderMarketStrip(); renderCards(); renderSelect(); renderDetail(); }
+    function setActiveChart(symbol, scroll = true) {
+      activeChartSymbol = normalizeSymbol(symbol);
+      chartSelectEl.value = activeChartSymbol;
+      detailQuote = null;
+      renderDetail(); refreshDetail();
+      if (scroll) document.querySelector('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    document.querySelector('#addBtn').addEventListener('click', () => { addSymbol(inputEl.value); inputEl.value = ''; });
+    inputEl.addEventListener('keydown', event => { if (event.key === 'Enter') { addSymbol(inputEl.value); inputEl.value = ''; } });
+    watchlistEl.addEventListener('click', event => {
+      const remove = event.target.closest('[data-remove]')?.dataset.remove;
+      const chart = event.target.closest('[data-chart]')?.dataset.chart;
+      const card = event.target.closest('.quote-card')?.dataset.symbol;
+      if (remove) return removeSymbol(remove);
+      if (chart || card) setActiveChart(chart || card);
+    });
+    marketStripEl.addEventListener('click', event => {
+      const symbol = event.target.closest('[data-index-card]')?.dataset.indexCard;
+      if (symbol) setActiveChart(symbol);
+    });
+    chartEl.addEventListener('click', event => {
+      const range = event.target.closest('[data-range]')?.dataset.range;
+      if (!range) return;
+      activeRange = range;
+      renderDetail();
+    });
+    leadersEl.addEventListener('click', event => {
+      const row = event.target.closest('[data-add-leader]');
+      if (row) addSymbol(row.dataset.addLeader, row.dataset.name);
+    });
+    chartSelectEl.addEventListener('change', event => setActiveChart(event.target.value));
+    leaderCategoryEl.addEventListener('change', refreshLeaders);
+    window.addEventListener('resize', renderDetail);
+
+    render();
+    refreshQuotes().then(refreshDetail);
+    refreshLeaders();
+    setInterval(refreshQuotes, 10000);
+  </script>
+</body>
+</html>

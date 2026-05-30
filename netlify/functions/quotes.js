@@ -7,7 +7,7 @@ const {
   fetchDailyPoints,
   fetchBasic
 } = require('./naver-client');
-const { normalizeMarketSymbol, fetchSinaQuotes } = require('./sina-client');
+const { normalizeMarketSymbol, fetchMarketQuotes } = require('./market-client');
 
 function normalizeAnySymbol(input) {
   const market = normalizeMarketSymbol(input);
@@ -33,6 +33,7 @@ exports.handler = async (event) => {
     .filter(Boolean)
     .slice(0, 40);
   const includeHistory = String(event.queryStringParameters?.history || '0') === '1';
+  const marketSource = String(event.queryStringParameters?.source || 'ths').toLowerCase();
 
   if (!symbols.length) return json(400, { error: 'Missing symbols' });
 
@@ -47,10 +48,11 @@ exports.handler = async (event) => {
     const [stockItems, indexItems, sinaQuotes] = await Promise.all([
       fetchRealtime(stockCodes, 'stock').catch(error => { if (stockCodes.length) errors.push({ group: 'KRX stock', message: error.message }); return {}; }),
       fetchRealtime(indexCodes, 'index').catch(error => { if (indexCodes.length) errors.push({ group: 'KRX index', message: error.message }); return {}; }),
-      fetchSinaQuotes(sinaMetas, includeHistory).catch(error => { if (sinaMetas.length) errors.push({ group: 'HK/A', message: error.message }); return []; })
+      fetchMarketQuotes(sinaMetas, includeHistory, marketSource).catch(error => { if (sinaMetas.length) errors.push({ group: 'HK/A', message: error.message }); return { quotes: [], errors: [] }; })
     ]);
     const itemMap = { ...stockItems, ...indexItems };
-    const sinaMap = new Map(sinaQuotes.map(quote => [quote.symbol, quote]));
+    errors.push(...(sinaQuotes.errors || []));
+    const sinaMap = new Map((sinaQuotes.quotes || []).map(quote => [quote.symbol, quote]));
 
     for (const symbol of symbols) {
       if (symbol.startsWith('KRX:')) {

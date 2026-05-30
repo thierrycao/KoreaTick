@@ -187,6 +187,12 @@
         <button class="primary" id="addBtn">添加</button>
       </div>
       <div class="quick" id="quickList"></div>
+      <select id="marketSource" aria-label="选择港股和A股数据源">
+        <option value="ths">港/A源：同花顺优先</option>
+        <option value="futu">港/A源：富途牛牛优先</option>
+        <option value="eastmoney">港/A源：东方财富</option>
+        <option value="tencent">港/A源：腾讯行情</option>
+      </select>
     </section>
 
     <section class="market-strip" id="marketStrip" aria-live="polite"></section>
@@ -287,6 +293,7 @@
     const flowBoardEl = document.querySelector('#flowBoard');
     const strategyBoardEl = document.querySelector('#strategyBoard');
     const refreshInsightsBtn = document.querySelector('#refreshInsightsBtn');
+    const marketSourceEl = document.querySelector('#marketSource');
 
     let watchlist = loadWatchlist();
     let quoteMap = new Map();
@@ -295,6 +302,8 @@
     let activeRange = 'day';
     let lastRefresh = null;
     let insightList = [];
+    let marketSource = localStorage.getItem('korea-stock-cn-market-source') || 'ths';
+    marketSourceEl.value = marketSource;
 
     function loadWatchlist() {
       try {
@@ -363,7 +372,8 @@
 
     async function fetchQuotes(symbols, history = false) {
       const encoded = symbols.map(item => encodeURIComponent(item)).join(',');
-      const endpoints = [`/api/quotes?symbols=${encoded}&history=${history ? 1 : 0}`, `/.netlify/functions/quotes?symbols=${encoded}&history=${history ? 1 : 0}`];
+      const source = encodeURIComponent(marketSource || 'ths');
+      const endpoints = [`/api/quotes?symbols=${encoded}&history=${history ? 1 : 0}&source=${source}`, `/.netlify/functions/quotes?symbols=${encoded}&history=${history ? 1 : 0}&source=${source}`];
       let lastError = null;
       for (const endpoint of endpoints) {
         try {
@@ -603,7 +613,7 @@
             <div class="price-line">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
             <div class="change-line">${quote ? `${signed(quote.change)} / ${signed(quote.changePercent)}%` : '--'}</div>
             ${quote?.miniImageChartUrl ? `<img class="mini-chart" src="${quote.miniImageChartUrl}" alt="${quote.name} 迷你走势图" loading="lazy" />` : '<div class="mini-chart"></div>'}
-            <div class="meta-line"><span>${quote?.exchange || 'Naver Stock'}${after ? ` · ${after}` : ''}</span><span>${quote?.marketStatus || '--'}</span></div>
+            <div class="meta-line"><span>${quote?.exchange || 'Naver Stock'}${quote?.sourceName ? ` · ${quote.sourceName}` : ''}${after ? ` · ${after}` : ''}</span><span>${quote?.marketStatus || '--'}</span></div>
           </div>`;
         watchlistEl.appendChild(card);
       });
@@ -635,7 +645,7 @@
               <span class="detail-label">${item?.symbol || '--'} · ${range.label}</span>
               <h3>${item?.name || quote?.name || '--'}</h3>
               <div class="detail-price">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
-              <p>${quote ? `${quote.exchange || 'Naver Stock'} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ' · Naver 标记 0 延迟'}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}` : '等待行情'}</p>
+              <p>${quote ? `${quote.exchange || 'Naver Stock'}${quote.sourceName ? ` · ${quote.sourceName}` : ''} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ' · Naver 标记 0 延迟'}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}` : '等待行情'}</p>
             </div>
             <div class="range-tabs">${RANGES.map(item => `<button class="range-tab ${item.key === activeRange ? 'active' : ''}" data-range="${item.key}">${item.label}</button>`).join('')}</div>
           </div>
@@ -646,6 +656,7 @@
             <div class="stat"><span>成交量</span><strong>${formatCompact(quote?.volume ?? latest?.volume)}</strong></div>
             <div class="stat"><span>市值</span><strong>${formatCompact(quote?.marketCap)}</strong></div>
           </div>
+          ${quote?.sourceFallbacks?.length ? `<div class="strategy-meta">数据源提示：${quote.sourceFallbacks.join('；')}</div>` : ''}
           <div class="legend"><span><i style="background:${isPositive(quote) ? '#41f2a1' : '#ff6152'}"></i>价格</span><span><i style="background:#ffd36a"></i>MA5</span><span><i style="background:#7aa7ff"></i>MA20</span><span><i style="background:rgba(245,240,223,.34)"></i>成交量</span></div>
           <div class="daily-change-list">${recentDaily.length ? recentDaily.map(point => `<div class="daily-chip ${Number(point.changePercent) >= 0 ? 'up' : 'down'}"><span>${point.time}</span><strong>${formatPercent(point.changePercent)}</strong></div>`).join('') : `<div class="daily-chip ${Number(quote?.changePercent) >= 0 ? 'up' : 'down'}"><span>今日</span><strong>${formatPercent(quote?.changePercent)}</strong></div>`}</div>
           <canvas class="big-chart"></canvas>
@@ -764,6 +775,11 @@
     chartSelectEl.addEventListener('change', event => setActiveChart(event.target.value));
     leaderCategoryEl.addEventListener('change', refreshLeaders);
     refreshInsightsBtn.addEventListener('click', refreshInsights);
+    marketSourceEl.addEventListener('change', event => {
+      marketSource = event.target.value || 'ths';
+      localStorage.setItem('korea-stock-cn-market-source', marketSource);
+      refreshQuotes().then(refreshDetail);
+    });
     window.addEventListener('resize', renderDetail);
 
     render();

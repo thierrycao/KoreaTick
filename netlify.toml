@@ -11,3 +11,8 @@
   from = "/api/leaders"
   to = "/.netlify/functions/leaders"
   status = 200
+
+[[redirects]]
+  from = "/api/insights"
+  to = "/.netlify/functions/insights"
+  status = 200

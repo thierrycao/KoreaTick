@@ -112,6 +112,32 @@
     .big-chart { width: 100%; height: 320px; border-radius: 24px; background: rgba(0,0,0,.20); }
     .naver-image { display: none; width: 100%; max-height: 340px; object-fit: contain; border-radius: 24px; background: rgba(0,0,0,.20); }
 
+
+    .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; padding: 12px; }
+    .insight-card { display: grid; gap: 12px; padding: 13px; border: 1px solid var(--line); border-radius: 22px; background: rgba(245,240,223,.055); }
+    .insight-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .score-ring { display: grid; place-items: center; min-width: 58px; height: 58px; border-radius: 50%; color: #102016; background: conic-gradient(var(--green) calc(var(--score) * 1%), rgba(245,240,223,.16) 0); font-size: 18px; font-weight: 950; }
+    .score-ring span { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--lime), var(--green)); }
+    .signal-tag { width: fit-content; padding: 5px 8px; border-radius: 999px; background: rgba(245,240,223,.08); color: var(--muted); font-size: 12px; font-weight: 900; }
+    .signal-tag.strong { color: #102016; background: linear-gradient(135deg, var(--lime), var(--green)); }
+    .signal-tag.wait { color: var(--amber); }
+    .signal-tag.avoid { color: var(--red); }
+    .flow-bars { display: grid; gap: 7px; }
+    .flow-line { display: grid; grid-template-columns: 58px 1fr auto; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+    .flow-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(245,240,223,.10); }
+    .flow-fill { height: 100%; width: min(100%, var(--w)); border-radius: 999px; background: var(--green); }
+    .flow-fill.neg { background: var(--red); }
+    .strategy-list { display: grid; gap: 8px; padding: 12px; }
+    .strategy-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 20px; background: rgba(245,240,223,.055); }
+    .strategy-rank { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; color: #102016; background: linear-gradient(135deg, var(--lime), var(--green)); font-weight: 950; }
+    .strategy-main { display: grid; gap: 7px; min-width: 0; }
+    .strategy-title { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .strategy-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .strategy-meta { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .level-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .level-box { padding: 8px; border-radius: 14px; background: rgba(0,0,0,.18); }
+    .level-box span { display: block; color: var(--muted); font-size: 11px; }
+    .level-box strong { display: block; margin-top: 3px; font-size: 13px; }
     .leaders { display: grid; gap: 8px; padding: 12px; }
     .leader-row { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; min-height: 58px; padding: 10px; border: 1px solid var(--line); border-radius: 18px; background: rgba(245,240,223,.055); }
     .rank { color: var(--muted); font-weight: 900; text-align: center; }
@@ -133,7 +159,7 @@
       .card { border-radius: 24px; }
       .detail-top { grid-template-columns: 1fr; }
       .range-tabs { justify-content: flex-start; }
-      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stats-grid, .level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .big-chart { height: 300px; }
     }
   </style>
@@ -170,6 +196,27 @@
       <div id="advancedChart"></div>
     </section>
 
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>主力资金流</h2>
+          <p>追踪外资、机构、个人近5日净买卖，找资金共振和派发风险。</p>
+        </div>
+        <button class="chip" id="refreshInsightsBtn">刷新资金</button>
+      </div>
+      <div class="insight-grid" id="flowBoard"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>每周策略候选</h2>
+          <p>按资金面、技术面、风险面打分，只给条件和纪律，不做无条件荐股。</p>
+        </div>
+      </div>
+      <div class="strategy-list" id="strategyBoard"></div>
+    </section>
     <section class="panel">
       <div class="panel-head">
         <div>
@@ -220,6 +267,9 @@
     const quickListEl = document.querySelector('#quickList');
     const leadersEl = document.querySelector('#leaders');
     const leaderCategoryEl = document.querySelector('#leaderCategory');
+    const flowBoardEl = document.querySelector('#flowBoard');
+    const strategyBoardEl = document.querySelector('#strategyBoard');
+    const refreshInsightsBtn = document.querySelector('#refreshInsightsBtn');
 
     let watchlist = loadWatchlist();
     let quoteMap = new Map();
@@ -227,6 +277,7 @@
     let activeChartSymbol = watchlist[0]?.symbol || DEFAULT_SYMBOLS[0].symbol;
     let activeRange = 'day';
     let lastRefresh = null;
+    let insightList = [];
 
     function loadWatchlist() {
       try {
@@ -283,6 +334,22 @@
       }
       throw lastError || new Error('请求失败');
     }
+
+    async function fetchInsights(symbols) {
+      const stockSymbols = symbols.filter(symbol => /^KRX:\d{6}$/.test(normalizeSymbol(symbol)));
+      if (!stockSymbols.length) return { insights: [] };
+      const encoded = stockSymbols.map(item => encodeURIComponent(item)).join(',');
+      const endpoints = [`/api/insights?symbols=${encoded}`, `/.netlify/functions/insights?symbols=${encoded}`];
+      let lastError = null;
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return await response.json();
+        } catch (error) { lastError = error; }
+      }
+      throw lastError || new Error('请求失败');
+    }
     async function fetchLeaders(category = 'all') {
       const endpoints = [`/api/leaders?category=${category}&pageSize=40`, `/.netlify/functions/leaders?category=${category}&pageSize=40`];
       let lastError = null;
@@ -304,6 +371,7 @@
       saveWatchlist();
       render();
       refreshQuotes();
+      refreshInsights();
       setActiveChart(symbol, false);
     }
     function removeSymbol(symbol) {
@@ -314,6 +382,7 @@
       detailQuote = null;
       render();
       refreshDetail();
+      refreshInsights();
     }
 
     async function refreshQuotes() {
@@ -345,6 +414,25 @@
         showError(data.errors?.length ? `详情未取到：${data.errors[0].symbol}` : '');
       } catch (error) {
         showError(`详情行情不可用：${error?.message || '请求失败'}`);
+      }
+    }
+
+    async function refreshInsights() {
+      const stockSymbols = watchlist.map(item => item.symbol).filter(symbol => /^KRX:\d{6}$/.test(normalizeSymbol(symbol)));
+      if (!stockSymbols.length) {
+        insightList = [];
+        renderInsights();
+        return;
+      }
+      flowBoardEl.innerHTML = '<div class="empty">正在读取外资/机构资金流...</div>';
+      strategyBoardEl.innerHTML = '<div class="empty">正在生成每周策略候选...</div>';
+      try {
+        const data = await fetchInsights(stockSymbols);
+        insightList = data.insights || [];
+        renderInsights();
+      } catch (error) {
+        flowBoardEl.innerHTML = `<div class="empty">资金流加载失败：${error?.message || '请求失败'}</div>`;
+        strategyBoardEl.innerHTML = `<div class="empty">策略评分加载失败：${error?.message || '请求失败'}</div>`;
       }
     }
     async function refreshLeaders() {
@@ -526,6 +614,66 @@
         chartEl.querySelector('.naver-image').style.display = 'block';
       }
     }
+
+    function formatFlow(value) {
+      if (!Number.isFinite(value)) return '--';
+      const sign = value > 0 ? '+' : '';
+      return `${sign}${formatCompact(value)}股`;
+    }
+    function scoreClass(status) {
+      if (status === '强关注') return 'strong';
+      if (status === '等触发' || status === '观察') return 'wait';
+      return 'avoid';
+    }
+    function flowWidth(value, max) {
+      if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return '0%';
+      return `${Math.max(8, Math.min(100, Math.abs(value) / max * 100))}%`;
+    }
+    function renderInsights() {
+      if (!insightList.length) {
+        flowBoardEl.innerHTML = '<div class="empty">自选里暂无韩国个股，添加 005930 / 000660 后可查看资金流。</div>';
+        strategyBoardEl.innerHTML = '<div class="empty">暂无策略候选。</div>';
+        return;
+      }
+      const maxFlow = Math.max(...insightList.flatMap(item => [
+        Math.abs(item.insight.flow.foreigner5 || 0),
+        Math.abs(item.insight.flow.institution5 || 0),
+        Math.abs(item.insight.flow.individual5 || 0)
+      ]), 1);
+      flowBoardEl.innerHTML = insightList.map(item => {
+        const flow = item.insight.flow;
+        const rows = [
+          ['外资', flow.foreigner5],
+          ['机构', flow.institution5],
+          ['个人', flow.individual5]
+        ];
+        return `<article class="insight-card">
+          <div class="insight-top">
+            <div class="symbol-title"><strong>${item.name}</strong><span>${item.symbol} · ${item.originalName || item.exchange}</span></div>
+            <div class="score-ring" style="--score:${item.insight.flowScore}"><span>${item.insight.flowScore}</span></div>
+          </div>
+          <div class="signal-tag ${scoreClass(item.insight.status)}">${item.insight.status} · ${item.insight.action}</div>
+          <div class="flow-bars">${rows.map(([label, value]) => `<div class="flow-line"><span>${label}</span><div class="flow-track"><div class="flow-fill ${value < 0 ? 'neg' : ''}" style="--w:${flowWidth(value, maxFlow)}"></div></div><strong>${formatFlow(value)}</strong></div>`).join('')}</div>
+          <div class="strategy-meta">外资连续 ${flow.foreignerStreak || 0} 日，机构连续 ${flow.institutionStreak || 0} 日；${item.insight.reasons.slice(0, 2).join('；')}</div>
+        </article>`;
+      }).join('');
+      strategyBoardEl.innerHTML = insightList.slice(0, 6).map((item, index) => {
+        const levels = item.insight.levels;
+        return `<article class="strategy-row">
+          <div class="strategy-rank">${index + 1}</div>
+          <div class="strategy-main">
+            <div class="strategy-title"><strong>${item.name}</strong><span class="signal-tag ${scoreClass(item.insight.status)}">${item.insight.totalScore} · ${item.insight.status}</span></div>
+            <div class="strategy-meta">${item.insight.action}。理由：${item.insight.reasons.join('；')}。</div>
+            <div class="level-grid">
+              <div class="level-box"><span>突破买点</span><strong>${formatNumber(levels.breakoutBuy, item.currency)}</strong></div>
+              <div class="level-box"><span>回踩参考</span><strong>${formatNumber(levels.pullbackBuy, item.currency)}</strong></div>
+              <div class="level-box"><span>纪律止损</span><strong>${formatNumber(levels.stopLoss, item.currency)}</strong></div>
+              <div class="level-box"><span>分批止盈</span><strong>${formatNumber(levels.takeProfit, item.currency)}</strong></div>
+            </div>
+          </div>
+        </article>`;
+      }).join('');
+    }
     function renderLeaders(stocks) {
       if (!stocks.length) { leadersEl.innerHTML = '<div class="empty">暂无市值榜数据。</div>'; return; }
       leadersEl.innerHTML = stocks.map((quote, index) => `
@@ -535,7 +683,7 @@
           <div class="leader-price"><div>${formatNumber(quote.price)}</div><span class="leader-meta">${signed(quote.changePercent)}%</span></div>
         </div>`).join('');
     }
-    function render() { renderQuickList(); renderMarketStrip(); renderCards(); renderSelect(); renderDetail(); }
+    function render() { renderQuickList(); renderMarketStrip(); renderCards(); renderSelect(); renderDetail(); renderInsights(); }
     function setActiveChart(symbol, scroll = true) {
       activeChartSymbol = normalizeSymbol(symbol);
       chartSelectEl.value = activeChartSymbol;
@@ -569,11 +717,13 @@
     });
     chartSelectEl.addEventListener('change', event => setActiveChart(event.target.value));
     leaderCategoryEl.addEventListener('change', refreshLeaders);
+    refreshInsightsBtn.addEventListener('click', refreshInsights);
     window.addEventListener('resize', renderDetail);
 
     render();
     refreshQuotes().then(refreshDetail);
     refreshLeaders();
+    refreshInsights();
     setInterval(refreshQuotes, 10000);
   </script>
 </body>

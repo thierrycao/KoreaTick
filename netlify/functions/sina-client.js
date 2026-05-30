@@ -170,18 +170,111 @@ async function fetchSinaDaily(meta, datalen = 50) {
   return withChange.map((point, index) => ({ ...point, ma5: ma5[index], ma20: ma20[index] }));
 }
 
-async function fetchSinaQuotes(metas, includeHistory = false) {
+
+async function fetchTencentHKText(metas) {
+  if (!metas.length) return '';
+  const url = `https://qt.gtimg.cn/q=${metas.map(meta => `hk${meta.code}`).join(',')}`;
+  const response = await fetch(url, {
+    headers: { 'user-agent': 'Mozilla/5.0 KoreaTick/1.0', 'referer': 'https://gu.qq.com/' }
+  });
+  if (!response.ok) throw new Error(`Tencent HK ${response.status}`);
+  const buffer = await response.arrayBuffer();
+  return new TextDecoder('gbk').decode(buffer);
+}
+
+function parseTencentHKVars(text) {
+  const map = new Map();
+  const regex = /v_hk(\d{5})="([^"]*)";/g;
+  let match;
+  while ((match = regex.exec(text))) map.set(match[1], match[2].split('~'));
+  return map;
+}
+
+function mapTencentHKQuote(meta, fields) {
+  const symbol = meta.symbol;
+  return {
+    input: symbol,
+    symbol,
+    code: meta.code,
+    name: SINA_NAMES[symbol] || fields[1] || symbol,
+    originalName: fields[1] || '',
+    endType: 'stock',
+    exchange: '港交所',
+    price: toNumber(fields[3]),
+    previousClose: toNumber(fields[4]),
+    change: toNumber(fields[31]),
+    changePercent: toNumber(fields[32]),
+    currency: fields[74] || 'HKD',
+    open: toNumber(fields[5]),
+    high: toNumber(fields[33]),
+    low: toNumber(fields[34]),
+    volume: toNumber(fields[36] || fields[6]),
+    tradingValue: toNumber(fields[37]),
+    marketCap: toNumber(fields[44]),
+    marketStatus: fields[30] || '',
+    marketTime: fields[30] || '',
+    delayTime: 0,
+    miniImageChartUrl: null,
+    points: []
+  };
+}
+
+async function fetchTencentHKDaily(meta) {
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get?param=hk${meta.code},day,,,50,qfq`;
+  const response = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0', 'referer': 'https://gu.qq.com/' } });
+  if (!response.ok) return [];
+  let data;
+  try { data = await response.json(); } catch { return []; }
+  const rows = data?.data?.[`hk${meta.code}`]?.day || [];
+  const points = rows.map(row => ({
+    time: row[0],
+    open: toNumber(row[1]),
+    close: toNumber(row[2]),
+    high: toNumber(row[3]),
+    low: toNumber(row[4]),
+    volume: toNumber(row[5])
+  })).filter(point => Number.isFinite(point.close));
+  const withChange = addChangePercent(points);
+  const ma5 = movingAverage(withChange, 5);
+  const ma20 = movingAverage(withChange, 20);
+  return withChange.map((point, index) => ({ ...point, ma5: ma5[index], ma20: ma20[index] }));
+}
+
+async function fetchTencentHKQuotes(metas, includeHistory = false) {
   if (!metas.length) return [];
-  const text = await fetchSinaText(metas.map(meta => meta.sina));
-  const rows = parseSinaVars(text);
+  const text = await fetchTencentHKText(metas);
+  const rows = parseTencentHKVars(text);
   const quotes = [];
   for (const meta of metas) {
-    const fields = rows.get(meta.sina.toLowerCase());
-    if (!fields || !fields.length || fields.every(field => !field)) continue;
-    const quote = meta.market === 'HKEX' ? mapHKQuote(meta, fields) : mapAQuote(meta, fields);
-    if (includeHistory) quote.points = await fetchSinaDaily(meta);
+    const fields = rows.get(meta.code);
+    if (!fields || !fields.length) continue;
+    const quote = mapTencentHKQuote(meta, fields);
+    if (includeHistory) quote.points = await fetchTencentHKDaily(meta);
     quotes.push(quote);
   }
+  return quotes;
+}
+
+async function fetchSinaQuotes(metas, includeHistory = false) {
+  if (!metas.length) return [];
+  const hkMetas = metas.filter(meta => meta.market === 'HKEX');
+  const mainlandMetas = metas.filter(meta => meta.market !== 'HKEX');
+  const quotes = [];
+
+  if (hkMetas.length) quotes.push(...await fetchTencentHKQuotes(hkMetas, includeHistory));
+
+  if (mainlandMetas.length) {
+    const text = await fetchSinaText(mainlandMetas.map(meta => meta.sina));
+    const rows = parseSinaVars(text);
+    for (const meta of mainlandMetas) {
+      const fields = rows.get(meta.sina.toLowerCase());
+      if (!fields || !fields.length || fields.every(field => !field)) continue;
+      const quote = mapAQuote(meta, fields);
+      if (includeHistory) quote.points = await fetchSinaDaily(meta);
+      quotes.push(quote);
+    }
+  }
+
   return quotes;
 }
 

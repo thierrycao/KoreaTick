@@ -162,7 +162,9 @@ async function fetchDailyPoints(code, pageSize = 50) {
     open: toNumber(row.openPrice),
     high: toNumber(row.highPrice),
     low: toNumber(row.lowPrice),
-    volume: toNumber(row.accumulatedTradingVolume)
+    volume: toNumber(row.accumulatedTradingVolume),
+    change: toNumber(row.compareToPreviousClosePrice),
+    changePercent: toNumber(row.fluctuationsRatio)
   })).filter(point => Number.isFinite(point.close));
   const ma5 = movingAverage(points, 5);
   const ma20 = movingAverage(points, 20);

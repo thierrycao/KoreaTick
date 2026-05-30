@@ -139,6 +139,16 @@
     .level-box span { display: block; color: var(--muted); font-size: 11px; }
     .level-box strong { display: block; margin-top: 3px; font-size: 13px; }
 
+
+    .control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .news-list { display: grid; gap: 8px; margin-top: 2px; }
+    .news-item { display: grid; gap: 6px; padding: 11px; border: 1px solid var(--line); border-radius: 17px; background: rgba(0,0,0,.14); text-decoration: none; color: var(--paper); }
+    .news-item strong { font-size: 14px; line-height: 1.45; }
+    .news-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .tone { width: fit-content; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 900; background: rgba(245,240,223,.08); color: var(--muted); }
+    .tone.good { color: #102016; background: linear-gradient(135deg, var(--lime), var(--green)); }
+    .tone.bad { color: var(--red); }
+    .flow-detail { display: grid; gap: 10px; padding: 12px; }
     .daily-change-list { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
     .daily-change-list::-webkit-scrollbar { display: none; }
     .daily-chip { flex: 0 0 auto; min-width: 82px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.16); }
@@ -187,12 +197,23 @@
         <button class="primary" id="addBtn">添加</button>
       </div>
       <div class="quick" id="quickList"></div>
-      <select id="marketSource" aria-label="选择港股和A股数据源">
-        <option value="ths">港/A源：同花顺优先</option>
-        <option value="futu">港/A源：富途牛牛优先</option>
-        <option value="eastmoney">港/A源：东方财富</option>
-        <option value="tencent">港/A源：腾讯行情</option>
-      </select>
+      <div class="control-row">
+        <select id="marketSource" aria-label="选择港股和A股数据源">
+          <option value="ths">港/A源：同花顺优先</option>
+          <option value="futu">港/A源：富途牛牛优先</option>
+          <option value="eastmoney">港/A源：东方财富</option>
+          <option value="tencent">港/A源：腾讯行情</option>
+        </select>
+        <select id="refreshInterval" aria-label="选择刷新频率">
+          <option value="1000">刷新：1秒</option>
+          <option value="5000">刷新：5秒</option>
+          <option value="10000">刷新：10秒</option>
+          <option value="15000">刷新：15秒</option>
+          <option value="30000">刷新：30秒</option>
+          <option value="60000">刷新：60秒</option>
+          <option value="0">手动刷新</option>
+        </select>
+      </div>
     </section>
 
     <section class="market-strip" id="marketStrip" aria-live="polite"></section>
@@ -216,9 +237,12 @@
           <h2>主力资金流</h2>
           <p>追踪外资、机构、个人近5日净买卖，找资金共振和派发风险。</p>
         </div>
-        <button class="chip" id="refreshInsightsBtn">刷新资金</button>
+        <div class="range-tabs">
+          <select id="flowSymbol" aria-label="选择资金流个股"></select>
+          <button class="chip" id="refreshInsightsBtn">刷新资金</button>
+        </div>
       </div>
-      <div class="insight-grid" id="flowBoard"></div>
+      <div class="flow-detail" id="flowBoard"></div>
     </section>
 
     <section class="panel">
@@ -294,6 +318,8 @@
     const strategyBoardEl = document.querySelector('#strategyBoard');
     const refreshInsightsBtn = document.querySelector('#refreshInsightsBtn');
     const marketSourceEl = document.querySelector('#marketSource');
+    const refreshIntervalEl = document.querySelector('#refreshInterval');
+    const flowSymbolEl = document.querySelector('#flowSymbol');
 
     let watchlist = loadWatchlist();
     let quoteMap = new Map();
@@ -303,7 +329,12 @@
     let lastRefresh = null;
     let insightList = [];
     let marketSource = localStorage.getItem('korea-stock-cn-market-source') || 'ths';
+    let refreshInterval = Number(localStorage.getItem('korea-stock-cn-refresh-ms') || 10000);
+    let refreshTimer = null;
+    let activeFlowSymbol = localStorage.getItem('korea-stock-cn-flow-symbol') || activeChartSymbol;
+    let currentNews = [];
     marketSourceEl.value = marketSource;
+    refreshIntervalEl.value = String(refreshInterval);
 
     function loadWatchlist() {
       try {
@@ -400,6 +431,20 @@
       }
       throw lastError || new Error('请求失败');
     }
+
+    async function fetchNews(symbol, name) {
+      const params = new URLSearchParams({ symbol, name: name || symbol });
+      const endpoints = [`/api/news?${params}`, `/.netlify/functions/news?${params}`];
+      let lastError = null;
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return await response.json();
+        } catch (error) { lastError = error; }
+      }
+      throw lastError || new Error('请求失败');
+    }
     async function fetchLeaders(category = 'all') {
       const endpoints = [`/api/leaders?category=${category}&pageSize=40`, `/.netlify/functions/leaders?category=${category}&pageSize=40`];
       let lastError = null;
@@ -443,8 +488,8 @@
         (data.quotes || []).forEach(quote => quoteMap.set(quote.symbol, quote));
         lastRefresh = new Date();
         renderMarketStrip();
-        renderCards();
-        renderDetail();
+        updateCards();
+        updateDetailQuote();
         showError(data.errors?.length ? `部分代码未取到：${data.errors.map(e => e.symbol || e.group).join('、')}` : '');
       } catch (error) {
         showError(`行情接口不可用：${error?.message || '请求失败'}。本地请运行 node server.js。`);
@@ -459,8 +504,9 @@
         const data = await fetchQuotes([activeChartSymbol], true);
         detailQuote = data.quotes?.[0] || quoteMap.get(activeChartSymbol) || null;
         if (detailQuote) quoteMap.set(detailQuote.symbol, detailQuote);
-        renderCards();
+        updateCards();
         renderDetail();
+        refreshNews();
         showError(data.errors?.length ? `详情未取到：${data.errors[0].symbol}` : '');
       } catch (error) {
         showError(`详情行情不可用：${error?.message || '请求失败'}`);
@@ -610,13 +656,43 @@
             </div>
           </div>
           <div class="quote-body">
-            <div class="price-line">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
-            <div class="change-line">${quote ? `${signed(quote.change)} / ${signed(quote.changePercent)}%` : '--'}</div>
-            ${quote?.miniImageChartUrl ? `<img class="mini-chart" src="${quote.miniImageChartUrl}" alt="${quote.name} 迷你走势图" loading="lazy" />` : '<div class="mini-chart"></div>'}
-            <div class="meta-line"><span>${quote?.exchange || 'Naver Stock'}${quote?.sourceName ? ` · ${quote.sourceName}` : ''}${after ? ` · ${after}` : ''}</span><span>${quote?.marketStatus || '--'}</span></div>
+            <div class="price-line" data-field="price">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
+            <div class="change-line" data-field="change">${quote ? `${signed(quote.change)} / ${signed(quote.changePercent)}%` : '--'}</div>
+            <div class="mini-chart" data-field="mini"></div>
+            <div class="meta-line"><span data-field="meta">${quote?.exchange || 'Naver Stock'}${quote?.sourceName ? ` · ${quote.sourceName}` : ''}${after ? ` · ${after}` : ''}</span><span data-field="status">${quote?.marketStatus || '--'}</span></div>
           </div>`;
         watchlistEl.appendChild(card);
       });
+    }
+
+    function updateCards() {
+      const existing = new Set([...watchlistEl.querySelectorAll('.quote-card')].map(card => card.dataset.symbol));
+      const expected = new Set(watchlist.map(item => item.symbol));
+      if (existing.size !== expected.size || [...expected].some(symbol => !existing.has(symbol))) {
+        renderCards();
+        return;
+      }
+      watchlist.forEach(item => {
+        const quote = quoteMap.get(item.symbol);
+        const card = watchlistEl.querySelector(`.quote-card[data-symbol="${CSS.escape(item.symbol)}"]`);
+        if (!card || !quote) return;
+        const positive = isPositive(quote);
+        const after = quote?.afterMarket?.price ? `盘后 ${formatNumber(quote.afterMarket.price)}` : '';
+        card.classList.toggle('up', positive);
+        card.classList.toggle('down', !positive);
+        card.querySelector('[data-field="price"]').textContent = formatNumber(quote.price, quote.currency);
+        card.querySelector('[data-field="change"]').textContent = `${signed(quote.change)} / ${signed(quote.changePercent)}%`;
+        card.querySelector('[data-field="meta"]').textContent = `${quote.exchange || 'Naver Stock'}${quote.sourceName ? ` · ${quote.sourceName}` : ''}${after ? ` · ${after}` : ''}`;
+        card.querySelector('[data-field="status"]').textContent = quote.marketStatus || '--';
+      });
+    }
+    function updateDetailQuote() {
+      const quote = quoteMap.get(activeChartSymbol);
+      if (!quote || !chartEl.querySelector('.detail-card')) return;
+      const priceEl = chartEl.querySelector('.detail-price');
+      if (priceEl) priceEl.textContent = formatNumber(quote.price, quote.currency);
+      const label = chartEl.querySelector('.detail-card p');
+      if (label) label.textContent = `${quote.exchange || 'Naver Stock'}${quote.sourceName ? ` · ${quote.sourceName}` : ''} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ''}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}`;
     }
     function renderSelect() {
       chartSelectEl.innerHTML = '';
@@ -626,6 +702,15 @@
         chartSelectEl.appendChild(option);
       });
       chartSelectEl.value = activeChartSymbol;
+      flowSymbolEl.innerHTML = '';
+      watchlist.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.symbol;
+        option.textContent = `${item.name || item.symbol} · ${item.symbol}`;
+        flowSymbolEl.appendChild(option);
+      });
+      if (!watchlist.some(item => item.symbol === activeFlowSymbol)) activeFlowSymbol = watchlist[0]?.symbol || '';
+      flowSymbolEl.value = activeFlowSymbol;
     }
     function renderDetail() {
       const item = watchlist.find(x => x.symbol === activeChartSymbol) || watchlist[0];
@@ -645,7 +730,7 @@
               <span class="detail-label">${item?.symbol || '--'} · ${range.label}</span>
               <h3>${item?.name || quote?.name || '--'}</h3>
               <div class="detail-price">${quote ? formatNumber(quote.price, quote.currency) : '加载中...'}</div>
-              <p>${quote ? `${quote.exchange || 'Naver Stock'}${quote.sourceName ? ` · ${quote.sourceName}` : ''} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ' · Naver 标记 0 延迟'}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}` : '等待行情'}</p>
+              <p>${quote ? `${quote.exchange || 'Naver Stock'}${quote.sourceName ? ` · ${quote.sourceName}` : ''} · ${quote.marketStatus || '状态未知'}${quote.delayTime ? ` · 延迟 ${quote.delayTime} 分钟` : ''}${lastRefresh ? ` · 本页刷新 ${lastRefresh.toLocaleTimeString('zh-CN', { hour12: false })}` : ''}` : '等待行情'}</p>
             </div>
             <div class="range-tabs">${RANGES.map(item => `<button class="range-tab ${item.key === activeRange ? 'active' : ''}" data-range="${item.key}">${item.label}</button>`).join('')}</div>
           </div>
@@ -661,6 +746,7 @@
           <div class="daily-change-list">${recentDaily.length ? recentDaily.map(point => `<div class="daily-chip ${Number(point.changePercent) >= 0 ? 'up' : 'down'}"><span>${point.time}</span><strong>${formatPercent(point.changePercent)}</strong></div>`).join('') : `<div class="daily-chip ${Number(quote?.changePercent) >= 0 ? 'up' : 'down'}"><span>今日</span><strong>${formatPercent(quote?.changePercent)}</strong></div>`}</div>
           <canvas class="big-chart"></canvas>
           ${imageUrl ? `<img class="naver-image" src="${imageUrl}" alt="Naver ${range.label}走势图" />` : ''}
+          <div class="news-list" id="stockNews"><div class="empty">正在加载个股新闻...</div></div>
         </div>`;
       const canvas = chartEl.querySelector('canvas');
       if (quote && points.length > 1) drawDetailChart(canvas, quote);
@@ -672,6 +758,41 @@
       }
     }
 
+
+    function toneClass(tone) {
+      if (tone === '利好') return 'good';
+      if (tone === '利空') return 'bad';
+      return '';
+    }
+    function renderNews() {
+      const el = document.querySelector('#stockNews');
+      if (!el) return;
+      if (!currentNews.length) {
+        el.innerHTML = '<div class="empty">暂无相关新闻。</div>';
+        return;
+      }
+      el.innerHTML = currentNews.slice(0, 8).map(item => `
+        <a class="news-item" href="${item.link || '#'}" target="_blank" rel="noopener noreferrer">
+          <span class="tone ${toneClass(item.tone)}">${item.tone} · ${item.reason}</span>
+          <strong>${item.title}</strong>
+          <p>${item.source || '新闻'} · ${item.publishedAt || ''}</p>
+        </a>
+      `).join('');
+    }
+    async function refreshNews() {
+      const item = watchlist.find(x => x.symbol === activeChartSymbol) || {};
+      const quote = detailQuote || quoteMap.get(activeChartSymbol);
+      const name = item.name || quote?.name || activeChartSymbol;
+      const el = document.querySelector('#stockNews');
+      if (el) el.innerHTML = '<div class="empty">正在加载个股新闻...</div>';
+      try {
+        const data = await fetchNews(activeChartSymbol, name);
+        currentNews = data.news || [];
+      } catch (error) {
+        currentNews = [{ title: `新闻加载失败：${error?.message || '请求失败'}`, tone: '中性', reason: '接口错误', source: 'KoreaTick', link: '' }];
+      }
+      renderNews();
+    }
     function formatFlow(value) {
       if (!Number.isFinite(value)) return '--';
       const sign = value > 0 ? '+' : '';
@@ -687,33 +808,40 @@
       return `${Math.max(8, Math.min(100, Math.abs(value) / max * 100))}%`;
     }
     function renderInsights() {
-      if (!insightList.length) {
-        flowBoardEl.innerHTML = '<div class="empty">自选里暂无韩国个股，添加 005930 / 000660 后可查看资金流。</div>';
+      if (!watchlist.length) {
+        flowBoardEl.innerHTML = '<div class="empty">暂无自选。</div>';
         strategyBoardEl.innerHTML = '<div class="empty">暂无策略候选。</div>';
         return;
       }
-      const maxFlow = Math.max(...insightList.flatMap(item => [
-        Math.abs(item.insight.flow.foreigner5 || 0),
-        Math.abs(item.insight.flow.institution5 || 0),
-        Math.abs(item.insight.flow.individual5 || 0)
-      ]), 1);
-      flowBoardEl.innerHTML = insightList.map(item => {
-        const flow = item.insight.flow;
-        const rows = [
-          ['外资', flow.foreigner5],
-          ['机构', flow.institution5],
-          ['个人', flow.individual5]
-        ];
-        return `<article class="insight-card">
+      const selectedItem = watchlist.find(item => item.symbol === activeFlowSymbol) || watchlist[0];
+      activeFlowSymbol = selectedItem.symbol;
+      flowSymbolEl.value = activeFlowSymbol;
+      const selectedInsight = insightList.find(item => item.symbol === activeFlowSymbol);
+      if (!selectedInsight) {
+        flowBoardEl.innerHTML = `<div class="empty">${selectedItem.name || selectedItem.symbol} 暂无主力资金流数据。当前资金流第一版优先支持 Naver 可提供外资/机构/个人数据的韩国个股；A 股/港股资金流需要后续接入同花顺/东方财富资金接口。</div>`;
+      } else {
+        const maxFlow = Math.max(
+          Math.abs(selectedInsight.insight.flow.foreigner5 || 0),
+          Math.abs(selectedInsight.insight.flow.institution5 || 0),
+          Math.abs(selectedInsight.insight.flow.individual5 || 0),
+          1
+        );
+        const flow = selectedInsight.insight.flow;
+        const rows = [['外资', flow.foreigner5], ['机构', flow.institution5], ['个人', flow.individual5]];
+        flowBoardEl.innerHTML = `<article class="insight-card">
           <div class="insight-top">
-            <div class="symbol-title"><strong>${item.name}</strong><span>${item.symbol} · ${item.originalName || item.exchange}</span></div>
-            <div class="score-ring" style="--score:${item.insight.flowScore}"><span>${item.insight.flowScore}</span></div>
+            <div class="symbol-title"><strong>${selectedInsight.name}</strong><span>${selectedInsight.symbol} · ${selectedInsight.originalName || selectedInsight.exchange}</span></div>
+            <div class="score-ring" style="--score:${selectedInsight.insight.flowScore}"><span>${selectedInsight.insight.flowScore}</span></div>
           </div>
-          <div class="signal-tag ${scoreClass(item.insight.status)}">${item.insight.status} · ${item.insight.action}</div>
+          <div class="signal-tag ${scoreClass(selectedInsight.insight.status)}">${selectedInsight.insight.status} · ${selectedInsight.insight.action}</div>
           <div class="flow-bars">${rows.map(([label, value]) => `<div class="flow-line"><span>${label}</span><div class="flow-track"><div class="flow-fill ${value < 0 ? 'neg' : ''}" style="--w:${flowWidth(value, maxFlow)}"></div></div><strong>${formatFlow(value)}</strong></div>`).join('')}</div>
-          <div class="strategy-meta">外资连续 ${flow.foreignerStreak || 0} 日，机构连续 ${flow.institutionStreak || 0} 日；${item.insight.reasons.slice(0, 2).join('；')}</div>
+          <div class="strategy-meta">外资连续 ${flow.foreignerStreak || 0} 日，机构连续 ${flow.institutionStreak || 0} 日；${selectedInsight.insight.reasons.slice(0, 2).join('；')}</div>
         </article>`;
-      }).join('');
+      }
+      if (!insightList.length) {
+        strategyBoardEl.innerHTML = '<div class="empty">暂无策略候选。</div>';
+        return;
+      }
       strategyBoardEl.innerHTML = insightList.slice(0, 6).map((item, index) => {
         const levels = item.insight.levels;
         return `<article class="strategy-row">
@@ -749,6 +877,12 @@
       if (scroll) document.querySelector('.panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+
+    function startRefreshTimer() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = null;
+      if (refreshInterval > 0) refreshTimer = setInterval(refreshQuotes, refreshInterval);
+    }
     document.querySelector('#addBtn').addEventListener('click', () => { addSymbol(inputEl.value); inputEl.value = ''; });
     inputEl.addEventListener('keydown', event => { if (event.key === 'Enter') { addSymbol(inputEl.value); inputEl.value = ''; } });
     watchlistEl.addEventListener('click', event => {
@@ -778,7 +912,18 @@
     marketSourceEl.addEventListener('change', event => {
       marketSource = event.target.value || 'ths';
       localStorage.setItem('korea-stock-cn-market-source', marketSource);
+      renderCards();
       refreshQuotes().then(refreshDetail);
+    });
+    refreshIntervalEl.addEventListener('change', event => {
+      refreshInterval = Number(event.target.value || 10000);
+      localStorage.setItem('korea-stock-cn-refresh-ms', String(refreshInterval));
+      startRefreshTimer();
+    });
+    flowSymbolEl.addEventListener('change', event => {
+      activeFlowSymbol = event.target.value;
+      localStorage.setItem('korea-stock-cn-flow-symbol', activeFlowSymbol);
+      renderInsights();
     });
     window.addEventListener('resize', renderDetail);
 
@@ -786,7 +931,7 @@
     refreshQuotes().then(refreshDetail);
     refreshLeaders();
     refreshInsights();
-    setInterval(refreshQuotes, 10000);
+    startRefreshTimer();
   </script>
 </body>
 </html>

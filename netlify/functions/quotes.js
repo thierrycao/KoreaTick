@@ -79,7 +79,7 @@ exports.handler = async (event) => {
       }
     }
 
-    return json(200, { source: 'Naver Stock + Sina Finance', quotes, errors, serverTime: Date.now() });
+    return json(200, { source: 'Naver Stock + Selectable Market Data', quotes, errors, serverTime: Date.now() });
   } catch (error) {
     return json(502, { error: error?.message || '行情请求失败', quotes, errors, serverTime: Date.now() });
   }

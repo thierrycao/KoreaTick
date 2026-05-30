@@ -6,6 +6,7 @@ const root = __dirname;
 const quotes = require('./netlify/functions/quotes');
 const leaders = require('./netlify/functions/leaders');
 const insights = require('./netlify/functions/insights');
+const news = require('./netlify/functions/news');
 
 function contentType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -34,6 +35,7 @@ const server = http.createServer(async (req, res) => {
     if (req.url.startsWith('/api/quotes')) return runFunction(quotes, req, res);
     if (req.url.startsWith('/api/leaders')) return runFunction(leaders, req, res);
     if (req.url.startsWith('/api/insights')) return runFunction(insights, req, res);
+    if (req.url.startsWith('/api/news')) return runFunction(news, req, res);
 
     const url = new URL(req.url, 'http://127.0.0.1:4173');
     const safePath = path.normalize(decodeURIComponent(url.pathname)).replace(/^\.\.(\/|\\|$)/, '');
